@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readdir, stat, readFile } from 'fs/promises'
 import { join } from 'path'
+import matter from 'gray-matter'
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,11 +30,18 @@ export async function POST(request: NextRequest) {
           const content = await readFile(filePath, 'utf-8')
           const stats = await stat(filePath)
 
+          // Parse frontmatter for metadata
+          const parsed = matter(content)
+          const { data: frontmatter, content: markdownContent } = parsed
+
           prdFiles.push({
             name: file,
             path: filePath,
             lastModified: stats.mtime,
-            content: content,
+            content: markdownContent || content,
+            tags: frontmatter.tags || frontmatter.tag || [],
+            status: frontmatter.status,
+            version: frontmatter.version,
           })
         } catch (error) {
           console.error(`Error reading file ${filePath}:`, error)

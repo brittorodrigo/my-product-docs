@@ -4,12 +4,16 @@ import { useState, useEffect } from 'react'
 import { format } from 'date-fns'
 import PRDViewer from './PRDViewer'
 import FolderConfig from './FolderConfig'
+import GlobalTagManager from './GlobalTagManager'
 
 interface PRDFile {
   name: string
   path: string
   lastModified: Date
   content: string
+  tags?: string[]
+  status?: string
+  version?: string
 }
 
 interface PRDRepositoryProps {
@@ -23,6 +27,9 @@ export default function PRDRepository({ folderPath, onViewChange }: PRDRepositor
   const [selectedPRD, setSelectedPRD] = useState<PRDFile | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [allTags, setAllTags] = useState<string[]>([])
+  const [showTagManager, setShowTagManager] = useState(false)
 
   useEffect(() => {
     if (folderPath) {
@@ -31,6 +38,15 @@ export default function PRDRepository({ folderPath, onViewChange }: PRDRepositor
       setPrds([])
     }
   }, [folderPath])
+
+  useEffect(() => {
+    // Extract all unique tags from PRDs
+    const tags = new Set<string>()
+    prds.forEach(prd => {
+      prd.tags?.forEach(tag => tags.add(tag))
+    })
+    setAllTags(Array.from(tags).sort())
+  }, [prds])
 
   const loadPRDs = async () => {
     if (!folderPath) return
@@ -60,13 +76,81 @@ export default function PRDRepository({ folderPath, onViewChange }: PRDRepositor
   }
 
   const filteredPRDs = prds.filter(prd => {
-    if (!searchQuery) return true
-    const query = searchQuery.toLowerCase()
-    return (
-      prd.name.toLowerCase().includes(query) ||
-      prd.content.toLowerCase().includes(query)
-    )
+    // Filter by search query
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase()
+      const matchesSearch = 
+        prd.name.toLowerCase().includes(query) ||
+        prd.content.toLowerCase().includes(query) ||
+        prd.tags?.some(tag => tag.toLowerCase().includes(query))
+      
+      if (!matchesSearch) return false
+    }
+
+    // Filter by selected tags
+    if (selectedTags.length > 0) {
+      const hasTags = selectedTags.every(tag => prd.tags?.includes(tag))
+      if (!hasTags) return false
+    }
+
+    return true
   })
+
+  const toggleTag = (tag: string) => {
+    setSelectedTags(prev => 
+      prev.includes(tag) 
+        ? prev.filter(t => t !== tag)
+        : [...prev, tag]
+    )
+  }
+
+  const clearFilters = () => {
+    setSelectedTags([])
+    setSearchQuery('')
+  }
+
+  const handleTagRenamed = async (oldTag: string, newTag: string) => {
+    try {
+      const response = await fetch('/api/prds/bulk-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          folderPath: folderPath,
+          action: 'rename',
+          oldTag: oldTag,
+          newTag: newTag,
+        }),
+      })
+
+      if (response.ok) {
+        // Reload PRDs to reflect changes
+        await loadPRDs()
+      }
+    } catch (error) {
+      console.error('Error renaming tag:', error)
+    }
+  }
+
+  const handleTagDeleted = async (tag: string) => {
+    try {
+      const response = await fetch('/api/prds/bulk-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          folderPath: folderPath,
+          action: 'delete',
+          oldTag: tag,
+        }),
+      })
+
+      if (response.ok) {
+        // Reload PRDs to reflect changes
+        await loadPRDs()
+      }
+    } catch (error) {
+      console.error('Error deleting tag:', error)
+    }
+  }
 
   const handleSelectPRD = (prd: PRDFile) => {
     setSelectedPRD(prd)
@@ -78,11 +162,23 @@ export default function PRDRepository({ folderPath, onViewChange }: PRDRepositor
     onViewChange?.(false)
   }
 
+  const handlePRDUpdate = (updatedPRD: PRDFile) => {
+    // Update the PRD in the list
+    setPrds(prevPrds => 
+      prevPrds.map(prd => 
+        prd.path === updatedPRD.path ? updatedPRD : prd
+      )
+    )
+    setSelectedPRD(updatedPRD)
+  }
+
   if (selectedPRD) {
     return (
       <PRDViewer 
         prd={selectedPRD} 
         onBack={handleBack}
+        allTags={allTags}
+        onPRDUpdate={handlePRDUpdate}
       />
     )
   }
@@ -148,6 +244,61 @@ export default function PRDRepository({ folderPath, onViewChange }: PRDRepositor
         </div>
       </div>
 
+      {/* Tags Filter */}
+      {allTags.length > 0 && (
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase">Tags</span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowTagManager(true)}
+                className="text-xs text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-1"
+                title="Manage tags globally"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Manage
+              </button>
+              {(selectedTags.length > 0 || searchQuery) && (
+                <button
+                  onClick={clearFilters}
+                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {allTags.map(tag => (
+              <button
+                key={tag}
+                onClick={() => toggleTag(tag)}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                  selectedTags.includes(tag)
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50'
+                }`}
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Global Tag Manager Modal */}
+      {showTagManager && (
+        <GlobalTagManager
+          allTags={allTags}
+          onClose={() => setShowTagManager(false)}
+          onTagRenamed={handleTagRenamed}
+          onTagDeleted={handleTagDeleted}
+        />
+      )}
+
       {loading && (
         <div className="text-center py-12">
           <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-blue-200 border-t-blue-600"></div>
@@ -182,6 +333,21 @@ export default function PRDRepository({ folderPath, onViewChange }: PRDRepositor
                   <h3 className="font-semibold text-gray-900 dark:text-white mb-1 truncate">
                     {prd.name.replace('.md', '')}
                   </h3>
+                  {prd.tags && prd.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-1">
+                      {prd.tags.slice(0, 3).map(tag => (
+                        <span
+                          key={tag}
+                          className="px-2 py-0.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded text-xs"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                      {prd.tags.length > 3 && (
+                        <span className="text-xs text-gray-500">+{prd.tags.length - 3}</span>
+                      )}
+                    </div>
+                  )}
                   <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">
                     {format(prd.lastModified, 'MMM d, yyyy')}
                   </p>

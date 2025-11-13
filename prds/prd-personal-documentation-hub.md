@@ -1,9 +1,15 @@
+---
+tags:
+  - personal
+  - productivity
+status: Draft
+version: 1
+---
+
 # Personal Documentation Hub
 
-**Version:** 1.0  
 **Date:** December 19, 2024  
-**Author:** Product Manager  
-**Status:** Draft
+**Author:** Product Manager
 
 ## Overview
 A personal application that serves as a centralized hub for managing product documentation and prototypes. The app provides two core capabilities: (1) a repository for all Product Requirements Documents (PRDs) in markdown format with search, organization, and viewing capabilities, and (2) a prototype directory that displays all created prototypes as clickable directory listings that open the actual prototype when selected.
