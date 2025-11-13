@@ -41,6 +41,8 @@ export default function PRDViewer({ prd, onBack, allTags, onPRDUpdate }: PRDView
   const [versionHistory, setVersionHistory] = useState<VersionHistoryItem[]>([])
   const [currentTags, setCurrentTags] = useState<string[]>(prd.tags || [])
   const [saving, setSaving] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [selectedVersion, setSelectedVersion] = useState<VersionHistoryItem | null>(null)
   const contentRef = useRef<HTMLDivElement>(null)
 
   // Extract table of contents from markdown
@@ -145,10 +147,40 @@ export default function PRDViewer({ prd, onBack, allTags, onPRDUpdate }: PRDView
     }
   }
 
+  // Copy markdown to clipboard
+  const handleCopyMarkdown = async () => {
+    try {
+      // Build full markdown with frontmatter
+      let fullMarkdown = ''
+      
+      // Add frontmatter if there are tags
+      if (currentTags.length > 0 || prd.version) {
+        fullMarkdown += '---\n'
+        if (currentTags.length > 0) {
+          fullMarkdown += `tags: [${currentTags.join(', ')}]\n`
+        }
+        if (prd.version) {
+          fullMarkdown += `version: ${prd.version}\n`
+        }
+        fullMarkdown += '---\n\n'
+      }
+      
+      // Add title and content
+      fullMarkdown += `# ${prd.name.replace('.md', '')}\n\n`
+      fullMarkdown += prd.content
+
+      await navigator.clipboard.writeText(fullMarkdown)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error)
+    }
+  }
+
   return (
     <div className="w-full">
       <div className="w-full">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
           <button
             onClick={onBack}
             className="flex items-center px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-200 font-medium"
@@ -169,60 +201,198 @@ export default function PRDViewer({ prd, onBack, allTags, onPRDUpdate }: PRDView
             Back to PRD List
           </button>
 
-          {versionHistory.length > 0 && (
+          <div className="flex items-center gap-2">
+            {/* Copy to Clipboard Button */}
             <button
-              onClick={() => setShowVersionHistory(!showVersionHistory)}
+              onClick={handleCopyMarkdown}
               className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border-2 border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400 rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-200 font-medium"
+              title="Copy markdown to clipboard"
             >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Version History ({versionHistory.length})
+              {copied ? (
+                <>
+                  <svg className="h-5 w-5 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-green-600 dark:text-green-400">Copied!</span>
+                </>
+              ) : (
+                <>
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  Copy Markdown
+                </>
+              )}
             </button>
-          )}
+
+            {versionHistory.length > 0 && (
+              <button
+                onClick={() => setShowVersionHistory(!showVersionHistory)}
+                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border-2 border-blue-200 dark:border-blue-700 text-blue-600 dark:text-blue-400 rounded-xl hover:shadow-lg hover:scale-105 transition-all duration-200 font-medium"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Version History ({versionHistory.length})
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Version History Modal */}
         {showVersionHistory && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowVersionHistory(false)}>
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-3xl w-full max-h-[80vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => {
+            setShowVersionHistory(false)
+            setSelectedVersion(null)
+          }}>
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
               <div className="p-6 border-b border-gray-200 dark:border-gray-700">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Version History</h2>
-                  <button onClick={() => setShowVersionHistory(false)} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+                  <div className="flex items-center gap-3">
+                    {selectedVersion && (
+                      <button
+                        onClick={() => setSelectedVersion(null)}
+                        className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                        title="Back to version list"
+                      >
+                        <svg className="h-5 w-5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                        </svg>
+                      </button>
+                    )}
+                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                      {selectedVersion ? 'Version Content' : 'Version History'}
+                    </h2>
+                  </div>
+                  <button onClick={() => {
+                    setShowVersionHistory(false)
+                    setSelectedVersion(null)
+                  }} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
                     <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
                 </div>
               </div>
-              <div className="p-6 overflow-y-auto max-h-[calc(80vh-88px)]">
-                {versionHistory.length === 0 ? (
-                  <p className="text-center text-gray-500 py-8">No version history available</p>
-                ) : (
-                  <div className="space-y-4">
-                    {versionHistory.map((version, index) => (
-                      <div key={index} className="border-l-4 border-blue-500 pl-4 py-2 bg-blue-50 dark:bg-blue-900/20 rounded-r-lg">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-semibold text-blue-600 dark:text-blue-400">
-                            {version.version || `Version ${versionHistory.length - index}`}
-                          </span>
-                          <span className="text-sm text-gray-600 dark:text-gray-400">
-                            {new Date(version.date).toLocaleDateString('en-US', { 
-                              year: 'numeric', 
-                              month: 'long', 
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </span>
-                        </div>
-                        <p className="text-sm text-gray-700 dark:text-gray-300 line-clamp-3">
-                          {version.content.substring(0, 200)}...
-                        </p>
+              
+              <div className="p-6 overflow-y-auto max-h-[calc(90vh-88px)]">
+                {selectedVersion ? (
+                  // Show full version content
+                  <div>
+                    <div className="mb-6 pb-4 border-b border-gray-200 dark:border-gray-700">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-lg font-semibold text-blue-600 dark:text-blue-400">
+                          {selectedVersion.version || 'Version'}
+                        </span>
+                        <span className="text-sm text-gray-600 dark:text-gray-400">
+                          {new Date(selectedVersion.date).toLocaleDateString('en-US', { 
+                            year: 'numeric', 
+                            month: 'long', 
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </span>
                       </div>
-                    ))}
+                      <button
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(selectedVersion.content)
+                            // Could add a toast notification here
+                          } catch (error) {
+                            console.error('Failed to copy:', error)
+                          }
+                        }}
+                        className="text-sm text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                      >
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                        Copy this version
+                      </button>
+                    </div>
+                    
+                    <div className="prose prose-lg dark:prose-invert max-w-none">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          h1: ({ node, ...props }) => (
+                            <h1 className="text-3xl font-bold mt-8 mb-4 text-gray-900 dark:text-white" {...props} />
+                          ),
+                          h2: ({ node, ...props }) => (
+                            <h2 className="text-2xl font-bold mt-6 mb-3 text-gray-900 dark:text-white" {...props} />
+                          ),
+                          h3: ({ node, ...props }) => (
+                            <h3 className="text-xl font-bold mt-4 mb-2 text-gray-900 dark:text-white" {...props} />
+                          ),
+                          h4: ({ node, ...props }) => (
+                            <h4 className="text-lg font-bold mt-3 mb-2 text-gray-900 dark:text-white" {...props} />
+                          ),
+                          p: ({ node, ...props }) => (
+                            <p className="mb-4 text-gray-700 dark:text-gray-300" {...props} />
+                          ),
+                          ul: ({ node, ...props }) => (
+                            <ul className="list-disc list-inside mb-4 space-y-2 text-gray-700 dark:text-gray-300" {...props} />
+                          ),
+                          ol: ({ node, ...props }) => (
+                            <ol className="list-decimal list-inside mb-4 space-y-2 text-gray-700 dark:text-gray-300" {...props} />
+                          ),
+                          code: ({ node, inline, ...props }: any) =>
+                            inline ? (
+                              <code className="bg-gray-100 dark:bg-gray-700 px-1 py-0.5 rounded text-sm font-mono text-red-600 dark:text-red-400" {...props} />
+                            ) : (
+                              <code className="block bg-gray-100 dark:bg-gray-700 p-4 rounded-lg overflow-x-auto text-sm font-mono" {...props} />
+                            ),
+                          pre: ({ node, ...props }) => (
+                            <pre className="bg-gray-100 dark:bg-gray-700 p-4 rounded-lg overflow-x-auto mb-4" {...props} />
+                          ),
+                        }}
+                      >
+                        {selectedVersion.content}
+                      </ReactMarkdown>
+                    </div>
                   </div>
+                ) : (
+                  // Show version list
+                  <>
+                    {versionHistory.length === 0 ? (
+                      <p className="text-center text-gray-500 py-8">No version history available</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {versionHistory.map((version, index) => (
+                          <button
+                            key={index}
+                            onClick={() => setSelectedVersion(version)}
+                            className="w-full text-left border-l-4 border-blue-500 pl-4 py-3 bg-blue-50 dark:bg-blue-900/20 rounded-r-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-semibold text-blue-600 dark:text-blue-400">
+                                {version.version || `Version ${versionHistory.length - index}`}
+                              </span>
+                              <span className="text-sm text-gray-600 dark:text-gray-400">
+                                {new Date(version.date).toLocaleDateString('en-US', { 
+                                  year: 'numeric', 
+                                  month: 'long', 
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">
+                              {version.content.substring(0, 150)}...
+                            </p>
+                            <div className="mt-2 flex items-center text-xs text-blue-600 dark:text-blue-400">
+                              <span>Click to view full content</span>
+                              <svg className="h-4 w-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
